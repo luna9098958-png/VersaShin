@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+@theme {
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-tech: "Share Tech Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  --color-oxidiana-black: var(--bg-color);
+  --color-oxidiana-dark: var(--bg-color);
+  --color-oxidiana-panel: var(--panel-color);
+  --color-oxidiana-border: var(--border-color);
+  --color-oxidiana-red: var(--accent-color);
+  --color-oxidiana-dim: var(--dim-color);
+}
+
+:root {
+  --bg-color: #050505;
+  --panel-color: #111111;
+  --border-color: #333333;
+  --accent-color: #ff003c;
+  --text-color: #e5e5e5;
+  --dim-color: #888888;
+  --selection-color: #ff003c;
+  --cursor-color: #ff003c;
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  font-family: var(--font-mono);
+}
+
+::selection {
+  background-color: var(--selection-color);
+  color: var(--bg-color);
+}
+
+.scanline {
+  opacity: 0.15;
+}
+
+.terminal-cursor {
+  background-color: var(--cursor-color);
+  box-shadow: 0 0 15px var(--cursor-color);
+}
+
+/* Override some tailwind classes to use variables */
+.bg-oxidiana-black { background-color: var(--bg-color); }
+.bg-oxidiana-dark { background-color: var(--bg-color); }
+.bg-oxidiana-panel { background-color: var(--panel-color); }
+.border-oxidiana-border { border-color: var(--border-color); }
+.text-oxidiana-red { color: var(--accent-color); }
+.bg-oxidiana-red { background-color: var(--accent-color); }
+.text-oxidiana-dim { color: var(--dim-color); }
