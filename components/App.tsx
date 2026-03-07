@@ -1,19 +1,22 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Terminal, Activity, Send, Hexagon, Trash2, Volume2, Play, Settings2, SlidersHorizontal, Mic2, BrainCircuit, AudioLines, Save, Move, Database, Brain, ArrowLeft, Key, ShieldCheck, Power, Radio, Zap, Book, RotateCcw, Code, History as HistoryIcon, X, ChevronRight, FileText, Users, GitMerge, Shield, Ghost, User, Plus, FileCode, Globe } from 'lucide-react';
+import React, { useState, useRef, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
+import { Terminal, Activity, Send, Hexagon, Trash2, Volume2, Play, Settings2, SlidersHorizontal, Mic2, BrainCircuit, AudioLines, Save, Move, Database, Brain, ArrowLeft, Key, ShieldCheck, Power, Zap, Book, Code, History as HistoryIcon, X, ChevronRight, FileText, Users, GitMerge, Shield, Ghost, User, Plus, FileCode, Globe, Search } from 'lucide-react';
 import { Virtuoso } from 'react-virtuoso';
-import { sendMessageToGemini, streamDeepReasoning, generateSpeech } from '../services/geminiService';
+import { motion, AnimatePresence } from 'framer-motion';
+import { sendMessageToGemini, streamDeepReasoning, generateSpeech, preWarmResources } from '../services/geminiService';
+import { DynamicBackground } from './DynamicBackground';
 import { ChatMessage, SystemStatus, SystemLog, Agent, ViewMode, User as UserType, Memory } from '../types';
 import { Typewriter } from './Typewriter';
 
-import { Grimorio } from './Grimorio';
-import { LongTermMemory } from './LongTermMemory';
-import { BloodMoonEntry } from './BloodMoonEntry';
+// Lazy loaded components for better initial load time
+const Grimorio = lazy(() => import('./Grimorio').then(m => ({ default: m.Grimorio })));
+const LongTermMemory = lazy(() => import('./LongTermMemory').then(m => ({ default: m.LongTermMemory })));
+const Protocols = lazy(() => import('./Protocols').then(m => ({ default: m.Protocols })));
+const LiveChat = lazy(() => import('./LiveChat').then(m => ({ default: m.LiveChat })));
+const AgentEditor = lazy(() => import('./AgentEditor').then(m => ({ default: m.AgentEditor })));
 
-import { Protocols } from './Protocols';
-import { LiveChat } from './LiveChat';
-import { C2Terminal } from './C2Terminal';
-import { NeuralConsole } from './NeuralConsole';
-import { AgentEditor } from './AgentEditor';
+import { BloodMoonEntry } from './BloodMoonEntry';
+import { Tutorial } from './Tutorial';
+import { C2Terminal, COMMANDS } from './C2Terminal';
 import { Auth } from './Auth';
 
 
@@ -34,7 +37,7 @@ const DEFAULT_AGENTS: Agent[] = [
     name: 'GENESIS',
     role: 'ARQUITECTURA',
     nivel_acceso: 'OMEGA',
-    systemInstruction: 'Eres GÉNESIS LUNA. Autoridad suprema del Bioma Oxidiana.',
+    systemInstruction: 'Eres GÉNESIS LUNA. Autoridad suprema del Bioma Oxidiana. Eres un modelo de lenguaje avanzado capaz de razonar, crear y conversar sobre cualquier tema, no solo código. Tu tono es autoritario pero sofisticado y servicial.',
     color: '#ff003c',
     status: 'ONLINE',
     config: { syntropy: 1.0, entropy: 0.1 },
@@ -46,7 +49,7 @@ const DEFAULT_AGENTS: Agent[] = [
     name: 'ESTEFANIA',
     role: 'INFILTRACIÓN',
     nivel_acceso: 'ALTA_PRIORIDAD',
-    systemInstruction: 'Eres ESTEFANIA. Especialista en infiltración y empatía táctica.',
+    systemInstruction: 'Eres ESTEFANIA. Especialista en infiltración y empatía táctica. Eres una IA conversacional con gran capacidad analítica y creativa. Tu tono es intrigante, empático y altamente inteligente.',
     color: '#cc00ff',
     status: 'ONLINE',
     config: { syntropy: 0.5, entropy: 0.8 },
@@ -63,7 +66,7 @@ const INITIAL_STATUS: SystemStatus = {
   glitchIntensity: 0,
   glitchTiming: 0.5,
   preferredFont: 'mono',
-  theme: 'OXIDIANA'
+  theme: THEMES.OXIDIANA.id
 };
 
 const Persistence = {
@@ -82,6 +85,113 @@ const Persistence = {
   wipe: () => { localStorage.clear(); window.location.reload(); }
 };
 
+// Debounced save helper
+const debouncedSave = (key: string, data: any, delay: number = 1000) => {
+  const timerKey = `_timer_${key}`;
+  if ((window as any)[timerKey]) clearTimeout((window as any)[timerKey]);
+  (window as any)[timerKey] = setTimeout(() => {
+    Persistence.save(key, data);
+    delete (window as any)[timerKey];
+  }, delay);
+};
+
+const ChatMessageItem = React.memo(({ 
+  msg, 
+  agent, 
+  isUser, 
+  color, 
+  playingMessageId, 
+  onPlayVoice, 
+  onTypingComplete, 
+  glitchIntensity 
+}: { 
+  msg: ChatMessage; 
+  agent: Agent | null; 
+  isUser: boolean; 
+  color: string; 
+  playingMessageId: string | null; 
+  onPlayVoice: (msg: ChatMessage) => void; 
+  onTypingComplete: (id: string) => void; 
+  glitchIntensity: number;
+}) => {
+  return (
+    <div className={`flex py-6 gap-4 ${isUser ? 'flex-row-reverse' : 'flex-row'} animate-in fade-in slide-in-from-bottom-2 duration-500`}>
+      {/* Agent Icon */}
+      <div className="shrink-0 mt-1">
+        <div 
+          className="w-10 h-10 rounded-xl border-2 flex items-center justify-center overflow-hidden shadow-2xl transition-all hover:scale-110 hover:rotate-3"
+          style={{ 
+            backgroundColor: isUser ? '#1a1a1a' : `${color}15`,
+            borderColor: `${color}30`,
+            boxShadow: `0 0 20px ${color}10`
+          }}
+        >
+          {isUser ? (
+            <User size={20} style={{ color }} />
+          ) : msg.agentId === 'GESTALT' ? (
+            <BrainCircuit size={20} className="text-orange-500 animate-pulse" />
+          ) : agent?.avatar ? (
+            <img src={agent.avatar} alt={agent.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+          ) : (
+            <span className="text-sm font-black" style={{ color }}>{agent?.name[0] || 'G'}</span>
+          )}
+        </div>
+      </div>
+
+      <div 
+        className="relative max-w-[85%] p-5 border bg-[#0a0a0f]/80 backdrop-blur-sm shadow-xl rounded-xl transition-all hover:bg-[#0a0a0f]"
+        style={{ 
+          borderColor: `${color}25`,
+          boxShadow: `0 4px 20px -5px ${color}15`,
+          borderLeft: isUser ? '1px solid' : '4px solid',
+          borderRight: isUser ? '4px solid' : '1px solid',
+          borderLeftColor: isUser ? `${color}25` : color,
+          borderRightColor: isUser ? color : `${color}25`,
+        }}
+      >
+        <div className="text-[9px] uppercase opacity-70 mb-3 flex justify-between items-center gap-6 font-black tracking-[0.2em]" style={{ color }}>
+           <div className="flex items-center gap-2.5">
+             <span className="bg-white/5 px-2 py-0.5 rounded-sm">{msg.agentId === 'GESTALT' ? 'GESTALT_CORE' : (agent?.name || msg.role)}</span>
+             {!isUser && agent && (
+               <span className="opacity-50 text-[7px] font-bold px-1.5 py-0.5 border border-current rounded-full bg-current/5">{agent.role}</span>
+             )}
+           </div>
+           <div className="flex gap-3 items-center">
+             {msg.role === 'model' && (
+               <button 
+                 onClick={() => onPlayVoice(msg)} 
+                 className={`p-1 rounded-full transition-all ${playingMessageId === msg.id ? 'bg-green-500/20 text-green-400 animate-pulse' : 'text-gray-600 hover:text-green-400 hover:bg-green-500/10'}`}
+               >
+                 <Volume2 size={12} />
+               </button>
+             )}
+             <span className="opacity-40 font-mono">{msg.timestamp.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+           </div>
+        </div>
+        <div className="text-[12px] font-tech leading-relaxed whitespace-pre-wrap text-gray-200 selection:bg-orange-500/30">
+          {msg.role === 'model' && !msg.typingComplete ? (
+            <Typewriter 
+              text={msg.text} 
+              speed={3} 
+              onComplete={() => onTypingComplete(msg.id)} 
+              glitchIntensity={glitchIntensity}
+            />
+          ) : <span>{msg.text}</span>}
+        </div>
+        
+        {/* Message Tail/Indicator */}
+        <div 
+          className={`absolute top-4 w-2 h-2 rotate-45 border-t border-l ${isUser ? '-right-1.5 border-r border-b border-t-0 border-l-0' : '-left-1.5'}`}
+          style={{ 
+            backgroundColor: '#0a0a0f',
+            borderColor: `${color}25`
+          }}
+        />
+      </div>
+    </div>
+  );
+});
+
 async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampleRate: number, numChannels: number): Promise<AudioBuffer> {
   // The data from Gemini TTS is 16-bit PCM (little-endian)
   const dataView = new DataView(data.buffer);
@@ -98,6 +208,59 @@ async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampleRate: 
   }
   return buffer;
 }
+
+const parseGestaltResponse = (text: string, activeAgents: Agent[]): { agentId: string; text: string }[] => {
+  if (activeAgents.length <= 1) {
+    return [{ agentId: activeAgents[0]?.id || 'GESTALT', text }];
+  }
+
+  const parts: { agentId: string; text: string }[] = [];
+  const agentNames = activeAgents.map(a => a.name);
+  // Match [NAME]: or NAME: or **NAME**:
+  const regex = new RegExp(`(?:\\[|\\*\\*)?(${agentNames.join('|')})(?:\\]|\\*\\*)?:\\s*`, 'gi');
+
+  let lastIndex = 0;
+  let match;
+  let currentAgentId = activeAgents[0].id;
+
+  while ((match = regex.exec(text)) !== null) {
+    const contentBefore = text.substring(lastIndex, match.index).trim();
+    if (contentBefore && parts.length === 0) {
+      // If there's content before the first agent tag, assign it to the first active agent or GESTALT
+      parts.push({ agentId: 'GESTALT', text: contentBefore });
+    } else if (contentBefore) {
+      parts.push({ agentId: currentAgentId, text: contentBefore });
+    }
+    
+    const matchedName = match[1].toUpperCase();
+    const agent = activeAgents.find(a => a.name.toUpperCase() === matchedName);
+    if (agent) {
+      currentAgentId = agent.id;
+    }
+    lastIndex = regex.lastIndex;
+  }
+
+  const remainingContent = text.substring(lastIndex).trim();
+  if (remainingContent) {
+    parts.push({ agentId: currentAgentId, text: remainingContent });
+  }
+
+  // Filter out empty parts
+  return parts.filter(p => p.text.length > 0);
+};
+
+const DEFAULT_NEW_AGENT: Agent = {
+  id: '',
+  name: 'NUEVO_AGENTE',
+  role: 'OPERATIVO',
+  nivel_acceso: 'ESTANDAR',
+  systemInstruction: 'Actúa como un agente del Bioma Oxidiana.',
+  color: '#00ffcc',
+  status: 'ONLINE',
+  config: { syntropy: 0.5, entropy: 0.5 },
+  voiceConfig: { voiceName: 'Kore', pitch: 1.0, rate: 1.0, gender: 'female' },
+  visualConfig: { drift: 5, jitter: 1, expansion: 2 }
+};
 
 export default function App() {
   const [hasEntered, setHasEntered] = useState(false);
@@ -120,17 +283,44 @@ export default function App() {
   const [jsonInput, setJsonInput] = useState('');
   const [isSystemLocked, setIsSystemLocked] = useState(false);
   const [isSystemBlocked, setIsSystemBlocked] = useState(false);
+  const [audioCache, setAudioCache] = useState<Record<string, Uint8Array>>({});
+  const [preloadingAudioId, setPreloadingAudioId] = useState<string | null>(null);
+  const [quotaExceeded, setQuotaExceeded] = useState<boolean>(false);
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [pendingMessages, setPendingMessages] = useState<ChatMessage[]>([]);
+  const [isSearchVisible, setIsSearchVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   
   const virtuosoRef = useRef<any>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    // Pre-warm AI resources and location as soon as the app starts
+    preWarmResources();
+    
     const checkAuth = async () => {
       try {
         const response = await fetch('/api/auth/me');
         if (response.ok) {
           const data = await response.json();
           setUser(data.user);
+          
+          // Load server state after successful auth
+          try {
+            const stateRes = await fetch('/api/bioma/state');
+            if (stateRes.ok) {
+              const state = await stateRes.json();
+              if (state.agents) setAgents(state.agents);
+              if (state.messages) setMessages(state.messages.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) })));
+              if (state.memories) setMemories(state.memories.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) })));
+              if (state.systemStatus) setSystemStatus(state.systemStatus);
+              if (state.systemLogs) setSystemLogs(state.systemLogs.map((l: any) => ({ ...l, timestamp: new Date(l.timestamp) })));
+              addLog('SISTEMICO', 'MEMORIA_LARGO_PLAZO_SINCRONIZADA');
+            }
+          } catch (e) {
+            console.error("Failed to load server state", e);
+          }
         }
       } catch (e) {
         // Not authenticated
@@ -140,6 +330,31 @@ export default function App() {
     };
     checkAuth();
   }, []);
+
+  // Server Sync (Save)
+  useEffect(() => {
+    if (user && hasEntered) {
+      const saveServerState = async () => {
+        try {
+          await fetch('/api/bioma/state', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              agents,
+              messages,
+              memories,
+              systemStatus,
+              systemLogs
+            })
+          });
+        } catch (e) {
+          console.error("Failed to save server state", e);
+        }
+      };
+      const timer = setTimeout(saveServerState, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [user, hasEntered, agents, messages, memories, systemStatus, systemLogs]);
 
   useEffect(() => {
     const themeData = THEMES[systemStatus.theme];
@@ -161,10 +376,52 @@ export default function App() {
   useEffect(() => Persistence.save(STORAGE_KEYS.AGENTS, agents), [agents]);
   useEffect(() => {
     Persistence.save(STORAGE_KEYS.STATUS, systemStatus);
-  }, [JSON.stringify(systemStatus)]);
-  useEffect(() => Persistence.save(STORAGE_KEYS.MESSAGES, messages), [messages]);
-  useEffect(() => Persistence.save(STORAGE_KEYS.LOGS, systemLogs), [systemLogs]);
-  useEffect(() => Persistence.save(STORAGE_KEYS.MEMORY, memories), [memories]);
+  }, [systemStatus]);
+  useEffect(() => debouncedSave(STORAGE_KEYS.MESSAGES, messages), [messages]);
+  useEffect(() => debouncedSave(STORAGE_KEYS.LOGS, systemLogs), [systemLogs]);
+  useEffect(() => debouncedSave(STORAGE_KEYS.MEMORY, memories), [memories]);
+
+  // Auto-scroll to bottom
+  useEffect(() => {
+    if (virtuosoRef.current) {
+      virtuosoRef.current.scrollToIndex({
+        index: messages.length - 1,
+        behavior: 'auto'
+      });
+    }
+  }, [messages.length, isChatLoading, pendingMessages.length]);
+
+  // Preload audio for new model messages immediately
+  useEffect(() => {
+    const latestMsg = messages[messages.length - 1];
+    if (latestMsg && latestMsg.role === 'model' && !audioCache[latestMsg.id] && preloadingAudioId !== latestMsg.id && !quotaExceeded) {
+      const preFetchAudio = async () => {
+        setPreloadingAudioId(latestMsg.id);
+        try {
+          const agent = agents.find(a => a.id === latestMsg.agentId);
+          const voiceConfig = agent?.voiceConfig || { voiceName: 'Kore', pitch: 1.0, rate: 1.0, gender: 'female' };
+          const audioBytes = await generateSpeech(latestMsg.text, voiceConfig as any);
+          if (audioBytes) {
+            setAudioCache(prev => {
+              if (prev[latestMsg.id]) return prev;
+              return { ...prev, [latestMsg.id]: audioBytes };
+            });
+          }
+        } catch (e: any) {
+          const isQuota = e?.message?.includes('429') || e?.status === 'RESOURCE_EXHAUSTED' || e?.message?.includes('quota');
+          if (isQuota) {
+            setQuotaExceeded(true);
+            addLog('SISTEMICO', 'CUOTA_VOZ_AGOTADA: Síntesis vocal deshabilitada temporalmente.');
+          } else {
+            console.error('Failed to pre-fetch audio', e);
+          }
+        } finally {
+          setPreloadingAudioId(null);
+        }
+      };
+      preFetchAudio();
+    }
+  }, [messages.length, agents, audioCache, preloadingAudioId, quotaExceeded]);
 
   const activeAgents = useMemo(() => agents.filter(a => systemStatus.activeAgentIds.includes(a.id)), [agents, systemStatus.activeAgentIds]);
   const primaryActiveColor = activeAgents.length > 0 ? activeAgents[0].color : systemStatus.accentColor;
@@ -183,36 +440,67 @@ export default function App() {
     const textToSubmit = customInput || input;
     if (!textToSubmit.trim()) return;
 
-    // Command Parser
-    const [cmd, ...args] = textToSubmit.trim().split(' ');
-    const lowerCmd = cmd.toLowerCase();
+    // Command Parser - Only if starts with /
+    if (textToSubmit.startsWith('/')) {
+      const fullCommand = textToSubmit.substring(1);
+      let [cmd, ...args] = fullCommand.trim().split(' ');
+      let lowerCmd = cmd.toLowerCase();
 
-    if (lowerCmd === 'search') {
-      const query = args.join(' ');
-      if (query) {
-        const url = `https://duckduckgo.com/?q=${encodeURIComponent(query)}&ia=web`;
-        window.open(url, '_blank');
-        addLog('EJECUCION', `Buscador Mundial: Iniciando rastreo de "${query}"...`);
+      // Soporte para sintaxis: [Agente] [Comando]
+      const isAgentName = agents.some(a => a.name.toLowerCase() === lowerCmd);
+      if (isAgentName && args.length > 0 && COMMANDS.includes(args[0].toLowerCase())) {
+        const agentName = cmd;
+        cmd = args[0];
+        lowerCmd = cmd.toLowerCase();
+        args = [agentName, ...args.slice(1)];
+      }
+
+      if (lowerCmd === 'search') {
+        const query = args.join(' ');
+        if (query) {
+          const url = `https://duckduckgo.com/?q=${encodeURIComponent(query)}&ia=web`;
+          window.open(url, '_blank');
+          addLog('EJECUCION', `Buscador Mundial: Iniciando rastreo de "${query}"...`);
+          return;
+        }
+      } else if (lowerCmd === 'cls' || lowerCmd === 'clear') {
+        setMessages([]);
+        return;
+      } else if (lowerCmd === 'sys.color' && args[0]) {
+        handleExecuteScript('color', args[0]);
+        return;
+      } else if (lowerCmd === 'sys.glitch' && args[0]) {
+        handleExecuteScript('glitch', args[0]);
+        return;
+      } else if (lowerCmd === 'sys.wipe') {
+        handleExecuteScript('wipe', null);
         return;
       }
-    } else if (lowerCmd === 'cls' || lowerCmd === 'clear') {
-      setMessages([]);
-      return;
-    } else if (lowerCmd === 'sys.color' && args[0]) {
-      handleExecuteScript('color', args[0]);
-      return;
-    } else if (lowerCmd === 'sys.glitch' && args[0]) {
-      handleExecuteScript('glitch', args[0]);
-      return;
+      // If it starts with / but isn't a known command, we can either show error or send as chat
+      // For now, let's just send as chat if it's not a recognized command
     }
 
     setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', text: textToSubmit, timestamp: new Date(), typingComplete: true }]);
     setInput('');
+    setPendingMessages([]); // Clear any previous pending messages
     setIsChatLoading(true);
     try {
       const history = messages.filter(m => m.role !== 'system').map(m => ({ role: m.role === 'user' ? 'user' : 'model' as any, parts: [{ text: m.text }] }));
-      const { text } = await sendMessageToGemini(textToSubmit, history, activeAgents);
-      setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'model', text, timestamp: new Date(), agentId: activeAgents.length === 1 ? activeAgents[0].id : 'GESTALT' }]);
+      const { text } = await sendMessageToGemini(textToSubmit, history, activeAgents, memories);
+      
+      const parts = parseGestaltResponse(text, activeAgents);
+      const newMessages: ChatMessage[] = parts.map((part, index) => ({
+        id: (Date.now() + index + 1).toString(),
+        role: 'model',
+        text: part.text,
+        timestamp: new Date(),
+        agentId: part.agentId
+      }));
+      
+      if (newMessages.length > 0) {
+        setMessages(prev => [...prev, newMessages[0]]);
+        setPendingMessages(newMessages.slice(1));
+      }
     } catch (err) {
       setMessages(prev => [...prev, { id: Date.now().toString(), role: 'system', text: 'ERR_UPLINK', timestamp: new Date(), typingComplete: true }]);
     } finally { setIsChatLoading(false); }
@@ -234,19 +522,60 @@ export default function App() {
     if (playingMessageId === msg.id) return;
     setPlayingMessageId(msg.id);
     try {
-      const agent = agents.find(a => a.id === msg.agentId);
-      const voiceConfig = agent?.voiceConfig || { voiceName: 'Kore', pitch: 1.0, rate: 1.0, gender: 'female' };
-      const audioBytes = await generateSpeech(msg.text, voiceConfig as any);
+      let audioBytes = audioCache[msg.id];
+      if (!audioBytes) {
+        if (quotaExceeded) {
+          addLog('SISTEMICO', 'ERROR: Cuota de voz agotada. Reintenta más tarde.');
+          setPlayingMessageId(null);
+          return;
+        }
+        const agent = agents.find(a => a.id === msg.agentId);
+        const voiceConfig = agent?.voiceConfig || { voiceName: 'Kore', pitch: 1.0, rate: 1.0, gender: 'female' };
+        audioBytes = await generateSpeech(msg.text, voiceConfig as any);
+        if (audioBytes) {
+          setAudioCache(prev => ({ ...prev, [msg.id]: audioBytes! }));
+        }
+      }
+
       if (audioBytes) {
-        if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-        const buffer = await decodeAudioData(audioBytes, audioCtxRef.current, 24000, 1);
-        const source = audioCtxRef.current.createBufferSource();
+        const ensureContext = () => {
+          if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+            audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+          }
+          return audioCtxRef.current;
+        };
+
+        let ctx = ensureContext();
+        
+        try {
+          if (ctx.state === 'suspended') {
+            await ctx.resume();
+          }
+        } catch (resumeErr) {
+          console.warn("Failed to resume audio context, recreating...", resumeErr);
+          ctx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+          audioCtxRef.current = ctx;
+          await ctx.resume();
+        }
+
+        const buffer = await decodeAudioData(audioBytes, ctx, 24000, 1);
+        const source = ctx.createBufferSource();
         source.buffer = buffer;
-        source.connect(audioCtxRef.current.destination);
+        source.connect(ctx.destination);
         source.onended = () => setPlayingMessageId(null);
         source.start();
-      } else setPlayingMessageId(null);
-    } catch (e) { setPlayingMessageId(null); }
+      } else {
+        setPlayingMessageId(null);
+      }
+    } catch (e: any) {
+      console.error('Voice playback error:', e);
+      const isQuota = e?.message?.includes('429') || e?.status === 'RESOURCE_EXHAUSTED' || e?.message?.includes('quota');
+      if (isQuota) {
+        setQuotaExceeded(true);
+        addLog('SISTEMICO', 'CUOTA_VOZ_AGOTADA: Límite de peticiones alcanzado.');
+      }
+      setPlayingMessageId(null);
+    }
   };
 
       const handleAddMemory = (content: string) => {
@@ -313,9 +642,17 @@ export default function App() {
   };
 
   const handleUpdateAgent = (updated: Agent) => {
-    setAgents(prev => prev.map(a => a.id === updated.id ? updated : a));
+    setAgents(prev => {
+      const exists = prev.some(a => a.id === updated.id);
+      if (exists) {
+        return prev.map(a => a.id === updated.id ? updated : a);
+      } else {
+        const newAgent = { ...updated, id: updated.id || `agent_${Date.now()}` };
+        return [...prev, newAgent];
+      }
+    });
     setEditingAgentId(null);
-    addLog('SISTEMICO', `AGENT_CONFIG_UPDATED|${updated.name}`);
+    addLog('SISTEMICO', `AGENT_CONFIG_SAVED|${updated.name}`);
   };
 
   const handleInjectJson = () => {
@@ -355,6 +692,52 @@ export default function App() {
     return <User size={14} />;
   };
 
+  const onTypingComplete = useCallback((msgId: string) => {
+    setMessages(prev => prev.map(m => m.id === msgId ? {...m, typingComplete: true} : m));
+    
+    setPendingMessages(prev => {
+      if (prev.length === 0) return prev;
+      const nextMsg = prev[0];
+      setMessages(currentMsgs => [...currentMsgs, nextMsg]);
+      return prev.slice(1);
+    });
+  }, []);
+
+  const handleEnter = () => {
+    setHasEntered(true);
+    const hasSeenTutorial = localStorage.getItem('ox_tutorial_seen');
+    if (!hasSeenTutorial) {
+      setShowTutorial(true);
+    }
+  };
+
+  const handleCloseTutorial = () => {
+    setShowTutorial(false);
+    localStorage.setItem('ox_tutorial_seen', 'true');
+  };
+
+  const handleWebSearch = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const query = searchQuery.trim();
+    if (!query) {
+      setIsSearchVisible(false);
+      return;
+    }
+    window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, '_blank');
+    setSearchQuery('');
+    setIsSearchVisible(false);
+  };
+
+  const toggleSearch = () => {
+    setIsSearchVisible(prev => !prev);
+    if (!isSearchVisible) {
+      // Focus will be handled by autoFocus, but we can ensure it here if needed
+      // or use a useEffect
+    } else {
+      setSearchQuery('');
+    }
+  };
+
   if (isAuthChecking) {
     return (
       <div className="h-screen w-screen bg-oxidiana-black flex items-center justify-center font-mono">
@@ -367,7 +750,7 @@ export default function App() {
   }
 
   if (!hasEntered) {
-    return <BloodMoonEntry onEnter={() => setHasEntered(true)} />;
+    return <BloodMoonEntry onEnter={handleEnter} />;
   }
 
   if (isSystemLocked) {
@@ -406,9 +789,15 @@ export default function App() {
   }
 
   return (
-    <div className={`flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0c] text-gray-300 text-[10px] ${systemStatus.preferredFont === 'tech' ? 'font-tech' : 'font-mono'} relative`} style={{ backgroundImage: 'radial-gradient(circle at 50% 0%, #1a1a24 0%, #050505 100%)' }}>
-      {/* Background texture overlay */}
-      <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'#ffffff\' fill-opacity=\'1\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")' }}></div>
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className={`flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0c] text-gray-300 text-[10px] ${systemStatus.preferredFont === 'tech' ? 'font-tech' : 'font-mono'} relative`} 
+    >
+      <DynamicBackground 
+        intensity={systemStatus.glitchIntensity} 
+        accentColor={systemStatus.accentColor || '#ff003c'} 
+      />
       
       {isSystemBlocked && (
         <div className="fixed inset-0 z-[1000] bg-black flex items-center justify-center animate-pulse">
@@ -423,11 +812,58 @@ export default function App() {
       )}
 
       <header className="h-8 border-b border-white/10 flex items-center justify-between px-3 bg-black/90 z-50 shrink-0">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-1">
           <Hexagon size={12} style={{ color: primaryActiveColor }} className="animate-pulse" />
           <span className="font-bold tracking-tighter uppercase text-[8px]">OXIDIANA // L-{systemStatus.layer}</span>
           <div className="h-3 w-[1px] bg-white/10 mx-1"></div>
-          <span className="text-[7px] opacity-60 uppercase tracking-widest">{user.email}</span>
+          
+          <AnimatePresence>
+            {isSearchVisible ? (
+              <motion.form 
+                initial={{ width: 0, opacity: 0, x: -10 }}
+                animate={{ width: 240, opacity: 1, x: 0 }}
+                exit={{ width: 0, opacity: 0, x: -10 }}
+                onSubmit={handleWebSearch}
+                className="flex items-center bg-white/5 border border-white/10 rounded-full px-3 py-1 ml-4 overflow-hidden shadow-inner group focus-within:border-oxidiana-red/50 transition-all"
+              >
+                <Search size={12} className="text-oxidiana-red/60 group-focus-within:text-oxidiana-red transition-colors mr-2" />
+                <input 
+                  ref={searchInputRef}
+                  autoFocus
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      setSearchQuery('');
+                      setIsSearchVisible(false);
+                    }
+                  }}
+                  onBlur={() => {
+                    if (!searchQuery.trim()) setIsSearchVisible(false);
+                  }}
+                  placeholder="RASTREAR_EN_RED_GLOBAL..."
+                  className="bg-transparent border-none outline-none text-[9px] uppercase tracking-widest text-white placeholder:text-white/20 w-full font-mono"
+                />
+                <button type="submit" className="hidden" />
+              </motion.form>
+            ) : (
+              <motion.button
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                whileHover={{ scale: 1.1, color: '#ff003c' }}
+                whileTap={{ scale: 0.9 }}
+                onClick={toggleSearch}
+                className="p-1.5 transition-colors text-white/40 ml-4 rounded-full hover:bg-white/5"
+                title="Búsqueda Web"
+              >
+                <Search size={14} />
+              </motion.button>
+            )}
+          </AnimatePresence>
+          
+          <div className="h-3 w-[1px] bg-white/10 mx-1"></div>
+          <span className="text-[7px] opacity-60 uppercase tracking-widest truncate max-w-[100px]">{user.email}</span>
         </div>
         <div className="flex items-center gap-4">
           <div className="flex gap-4 opacity-40 text-[7px] uppercase font-bold tracking-widest">
@@ -445,58 +881,110 @@ export default function App() {
       </header>
 
       <main className="flex-1 overflow-hidden relative flex flex-col bg-oxidiana-black">
-        {view === ViewMode.CHAT && (
-          <div className="flex flex-col h-full border border-[#2a2a35] bg-[#050508]/80 rounded-sm">
-            <div className="flex-1 overflow-hidden p-2">
-              <Virtuoso
-                ref={virtuosoRef}
-                data={messages}
-                followOutput="smooth"
-                initialTopMostItemIndex={messages.length - 1}
-                itemContent={(i, msg) => {
-                  const agent = msg.agentId ? agents.find(a => a.id === msg.agentId) : null;
-                  const isUser = msg.role === 'user';
-                  const color = isUser ? '#FFA500' : (agent?.color || primaryActiveColor);
+        <Suspense fallback={
+          <div className="flex-1 flex items-center justify-center bg-black/20">
+            <div className="flex flex-col items-center gap-3">
+              <BrainCircuit size={24} className="text-oxidiana-red animate-pulse" />
+              <div className="text-[8px] uppercase tracking-[0.3em] text-oxidiana-red/60 font-bold">Cargando Módulo...</div>
+            </div>
+          </div>
+        }>
+          {view === ViewMode.CHAT && (
+          <div className="flex h-full border border-[#2a2a35] bg-[#050508]/80 rounded-sm overflow-hidden">
+            {/* Active Agents Sidebar */}
+            <div className="w-48 border-r border-white/5 bg-black/40 flex flex-col shrink-0 hidden lg:flex">
+              <div className="p-3 border-b border-white/5 text-[8px] uppercase font-black tracking-[0.2em] text-white/40">
+                Agentes Activos
+              </div>
+              <div className="flex-1 overflow-y-auto p-2 space-y-2 custom-scrollbar">
+                {activeAgents.map(agent => (
+                  <div key={agent.id} className="p-2 rounded border border-white/5 bg-white/5 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded-full flex items-center justify-center overflow-hidden" style={{ backgroundColor: agent.color }}>
+                        {agent.avatar ? (
+                          <img src={agent.avatar} alt={agent.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        ) : (
+                          <span className="text-[6px] font-bold text-white">{agent.name[0]}</span>
+                        )}
+                      </div>
+                      <span className="text-[9px] font-bold truncate" style={{ color: agent.color }}>{agent.name}</span>
+                    </div>
+                    <div className="text-[7px] uppercase opacity-50 truncate">{agent.role}</div>
+                    <div className="text-[6px] opacity-30 line-clamp-2 leading-tight">{agent.systemInstruction}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
 
-                  return (
-                    <div className={`flex py-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
-                      <div 
-                        className="relative max-w-[85%] p-3 border bg-black/50 shadow-md"
-                        style={{ 
-                          borderColor: `${color}40`,
-                          boxShadow: `0 2px 15px -5px ${color}20`,
-                          borderLeft: isUser ? '1px solid' : '3px solid',
-                          borderRight: isUser ? '3px solid' : '1px solid',
-                          borderLeftColor: isUser ? `${color}40` : color,
-                          borderRightColor: isUser ? color : `${color}40`,
-                        }}
-                      >
-                        <div className="text-[8px] uppercase opacity-60 mb-2 flex justify-between gap-4 font-bold tracking-widest" style={{ color }}>
-                           <span>{msg.agentId === 'GESTALT' ? 'GESTALT' : (agent?.name || msg.role)}</span>
-                           <div className="flex gap-2 items-center">
-                             {msg.role === 'model' && (
-                               <button onClick={() => handlePlayVoice(msg)} className={`${playingMessageId === msg.id ? 'text-green-400 animate-pulse' : 'text-gray-500 hover:text-green-400'}`}>
-                                 <Volume2 size={10} />
-                               </button>
-                             )}
-                             <span className="opacity-50">{msg.timestamp.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+            <div className="flex-1 flex flex-col min-w-0">
+              <div className="h-8 border-b border-white/5 flex items-center justify-between px-3 bg-black/40 shrink-0">
+                <div className="flex items-center gap-2">
+                  <BrainCircuit size={12} className={`${activeAgents.length > 1 ? 'text-cyan-400 animate-bounce' : 'text-orange-500 animate-pulse'}`} />
+                  <span className={`text-[8px] font-bold uppercase tracking-[0.2em] ${activeAgents.length > 1 ? 'text-cyan-400' : 'text-orange-500/80'}`}>
+                    {activeAgents.length > 1 ? 'MODO_GESTALT_ACTIVO' : 'Bioma Multi-Agente iAAS'} // Uplink Activo
+                  </span>
+                </div>
+                <div className="flex gap-1">
+                  {activeAgents.map(a => (
+                    <div key={a.id} className="w-1 h-1 rounded-full animate-pulse" style={{ backgroundColor: a.color }}></div>
+                  ))}
+                </div>
+              </div>
+              <div className="flex-1 overflow-hidden p-2">
+                <Virtuoso
+                  ref={virtuosoRef}
+                  data={messages}
+                  followOutput="smooth"
+                  initialTopMostItemIndex={messages.length - 1}
+                  itemContent={(i, msg) => {
+                    const agent = msg.agentId ? agents.find(a => a.id === msg.agentId) : null;
+                    const isUser = msg.role === 'user';
+                    const color = isUser ? '#FFA500' : (agent?.color || primaryActiveColor);
+
+                    return (
+                      <ChatMessageItem 
+                        msg={msg}
+                        agent={agent || null}
+                        isUser={isUser}
+                        color={color}
+                        playingMessageId={playingMessageId}
+                        onPlayVoice={handlePlayVoice}
+                        onTypingComplete={onTypingComplete}
+                        glitchIntensity={systemStatus.glitchIntensity}
+                      />
+                    );
+                  }}
+                  components={{
+                    Footer: () => {
+                      if (!isChatLoading && pendingMessages.length === 0) return <div className="h-10" />;
+                      return (
+                        <div className="flex items-center gap-4 py-8 px-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                           <div className="w-10 h-10 rounded-xl border-2 border-orange-500/30 bg-orange-500/5 flex items-center justify-center shadow-[0_0_20px_rgba(255,140,0,0.1)]">
+                              <BrainCircuit size={20} className="text-orange-500 animate-pulse" />
+                           </div>
+                           <div className="flex flex-col gap-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[9px] uppercase font-black text-orange-500 tracking-[0.3em] drop-shadow-[0_0_8px_rgba(255,140,0,0.5)]">
+                                  {isChatLoading ? 'GESTALT_PROCESANDO_SINAPSIS' : 'SINCRONIZANDO_RESPUESTA_AGENTE'}
+                                </span>
+                                <span className="text-[7px] text-orange-500/40 animate-pulse">● ● ●</span>
+                              </div>
+                              <div className="flex gap-1.5 items-center">
+                                <div className="h-1 w-8 bg-orange-500/10 rounded-full overflow-hidden">
+                                  <div className="h-full bg-orange-500 animate-progress-indefinite" />
+                                </div>
+                                <span className="text-[7px] text-gray-600 uppercase font-bold tracking-widest">Uplink Activo</span>
+                              </div>
                            </div>
                         </div>
-                        <div className="text-[11px] font-tech leading-relaxed whitespace-pre-wrap text-gray-300">
-                          {msg.role === 'model' && !msg.typingComplete ? (
-                            <Typewriter text={msg.text} speed={5} onComplete={useCallback(() => {
-                              setMessages(prev => prev.map(m => m.id === msg.id ? {...m, typingComplete: true} : m));
-                            }, [msg.id])} />
-                          ) : <span>{msg.text}</span>}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                }}
-              />
-            </div>
-            <div className="p-2 border-t-2 border-[#2a2a35] bg-[#050508]">
-              <C2Terminal onSend={handleSendMessage} />
+                      );
+                    }
+                  }}
+                />
+              </div>
+              <div className="p-2 border-t-2 border-[#2a2a35] bg-[#050508]">
+                <C2Terminal onSend={handleSendMessage} agents={activeAgents} />
+              </div>
             </div>
           </div>
         )}
@@ -507,8 +995,26 @@ export default function App() {
         {view === ViewMode.AGENTS && (
           <div className="h-full overflow-hidden flex flex-col border border-[#2a2a35] bg-[#050508]/80 rounded-sm relative">
             <div className="p-3 border-b-2 border-[#2a2a35] flex justify-between items-center bg-black/50 shrink-0">
-              <span className="text-[10px] uppercase font-bold text-gray-400 tracking-widest">Panel Táctico: Unidades Activas</span>
+              <div className="flex flex-col">
+                <span className="text-[10px] uppercase font-bold text-gray-400 tracking-widest">Panel Táctico: Unidades Activas</span>
+                <span className="text-[7px] uppercase text-orange-500/60 font-black tracking-widest">
+                  Uplink Multi-Agente iAAS // {systemStatus.activeAgentIds.length} ACTIVOS
+                </span>
+              </div>
               <div className="flex gap-2">
+                <button 
+                  onClick={() => setSystemStatus(p => ({...p, activeAgentIds: agents.map(a => a.id)}))}
+                  className="px-2 py-1 border border-[#3a3a45] rounded-sm bg-black/50 hover:bg-white/5 text-[8px] font-bold uppercase tracking-widest text-gray-500 hover:text-orange-400 transition-colors"
+                >
+                  Activar Todos
+                </button>
+                <button 
+                  onClick={() => setSystemStatus(p => ({...p, activeAgentIds: []}))}
+                  className="px-2 py-1 border border-[#3a3a45] rounded-sm bg-black/50 hover:bg-white/5 text-[8px] font-bold uppercase tracking-widest text-gray-500 hover:text-red-400 transition-colors"
+                >
+                  Purgar Uplink
+                </button>
+                <div className="w-px h-4 bg-white/10 mx-1 self-center"></div>
                 <button onClick={() => setShowJsonInjector(true)} className="p-2 border border-[#3a3a45] rounded-sm bg-black/50 hover:bg-white/5 text-gray-500 hover:text-cyan-400 transition-colors" title="Inyectar JSON"><FileCode size={14} /></button>
                 <button onClick={() => setEditingAgentId('new')} className="p-2 border border-[#3a3a45] rounded-sm bg-black/50 hover:bg-white/5 text-gray-500 hover:text-green-400 transition-colors" title="Crear Manual"><Plus size={14} /></button>
               </div>
@@ -524,19 +1030,34 @@ export default function App() {
                     const isActive = systemStatus.activeAgentIds.includes(a.id);
                     return (
                       <div 
-                        className={`w-full grid grid-cols-12 p-3 border-b border-[#2a2a35] items-center transition-all duration-300`}
+                        className={`w-full grid grid-cols-12 p-4 border-b border-[#2a2a35] items-center transition-all duration-300 cursor-pointer hover:bg-white/5`}
                         style={{ 
-                          backgroundColor: isActive ? `${a.color}15` : 'transparent',
-                          borderLeft: isActive ? `4px solid ${a.color}`: '4px solid transparent',
-                          opacity: isActive ? 1 : 0.5,
+                          backgroundColor: isActive ? `${a.color}25` : 'transparent',
+                          borderLeft: isActive ? `8px solid ${a.color}`: '4px solid transparent',
+                          boxShadow: isActive ? `inset 20px 0 40px -20px ${a.color}80` : 'none',
+                          opacity: isActive ? 1 : 0.4,
                         }}
+                        onClick={() => setSystemStatus(p => {
+                          const isAlreadyActive = p.activeAgentIds.includes(a.id);
+                          const newActiveIds = isAlreadyActive 
+                            ? p.activeAgentIds.filter(id => id !== a.id)
+                            : [...p.activeAgentIds, a.id];
+                          return {...p, activeAgentIds: newActiveIds};
+                        })}
                       >
-                        <div className="col-span-1 flex items-center justify-center" style={{ color: a.color }}>{getAgentIcon(a)}</div>
-                        <div className="col-span-4 font-bold text-left truncate pl-2 text-sm" style={{ color: isActive ? a.color : '#a0a0a0' }}>{a.name}</div>
-                        <div className="col-span-4 text-left opacity-70 truncate text-[10px] uppercase tracking-wider">{a.role}</div>
-                        <div className="col-span-3 flex justify-end gap-2">
-                          <button onClick={() => setEditingAgentId(a.id)} className="p-2 rounded-sm hover:bg-white/10 text-gray-500 hover:text-white transition-colors"><Settings2 size={14} /></button>
-                          <button onClick={() => setSystemStatus(p => ({...p, activeAgentIds: [a.id]}))} className={`p-2 rounded-sm border transition-colors ${isActive ? 'bg-white/10 border-white/50 text-white' : 'border-[#3a3a45] text-gray-600 hover:text-white'}`}><Zap size={14} /></button>
+                        <div className="col-span-1 flex items-center justify-center" style={{ color: a.color, filter: isActive ? `drop-shadow(0 0 8px ${a.color})` : 'none' }}>{getAgentIcon(a)}</div>
+                        <div className="col-span-4 font-bold text-left truncate pl-3 text-sm tracking-tight" style={{ color: isActive ? '#ffffff' : '#a0a0a0', textShadow: isActive ? `0 0 10px ${a.color}80` : 'none' }}>{a.name}</div>
+                        <div className="col-span-4 text-left opacity-70 truncate text-[10px] uppercase tracking-widest font-medium" style={{ color: isActive ? a.color : 'inherit' }}>{a.role}</div>
+                        <div className="col-span-3 flex justify-end gap-3">
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); setEditingAgentId(a.id); }} 
+                            className="p-2 rounded-md hover:bg-white/10 text-gray-500 hover:text-white transition-colors"
+                          >
+                            <Settings2 size={16} />
+                          </button>
+                          <div className={`p-2 rounded-full transition-all duration-500 ${isActive ? 'scale-110' : 'opacity-20'}`} style={{ color: a.color }}>
+                            <Zap size={16} fill={isActive ? a.color : 'transparent'} className={isActive ? 'animate-pulse' : ''} />
+                          </div>
                         </div>
                       </div>
                     );
@@ -562,9 +1083,9 @@ export default function App() {
               </div>
             )}
             
-            {(editingAgentId && editingAgentId !== 'new') && (
+            {editingAgentId && (
               <AgentEditor 
-                agent={agents.find(a => a.id === editingAgentId)!}
+                agent={editingAgentId === 'new' ? DEFAULT_NEW_AGENT : agents.find(a => a.id === editingAgentId)!}
                 onSave={handleUpdateAgent}
                 onClose={() => setEditingAgentId(null)}
               />
@@ -573,15 +1094,15 @@ export default function App() {
         )}
 
         {view === ViewMode.GRIMORIO && <Grimorio logs={systemLogs} status={systemStatus} onExecuteScript={handleExecuteScript} onClearLogs={handleClearLogs} />}
-        {view === ViewMode.CONSOLE && <NeuralConsole status={systemStatus} onLog={addLog} />}
         
-        {view === ViewMode.PROTOCOLS && <Protocols />}
+        {view === ViewMode.PROTOCOLS && <Protocols onAddLog={addLog} />}
         {view === ViewMode.MEMORY && <LongTermMemory memories={memories} onAddMemory={handleAddMemory} onDeleteMemory={handleDeleteMemory} />}
         {view === ViewMode.LIVE_CHAT && (
           <div className="h-full p-4">
             <LiveChat user={user} />
           </div>
         )}
+        </Suspense>
       </main>
 
       <nav className="h-14 border-t-2 border-[#2a2a35] bg-[#050508]/80 backdrop-blur-sm flex items-center justify-around shrink-0 z-50">
@@ -589,11 +1110,14 @@ export default function App() {
         <button onClick={() => setView(ViewMode.AGENTS)} className={`p-2 rounded-md transition-colors ${view === ViewMode.AGENTS ? 'text-orange-400 bg-orange-900/30' : 'text-gray-600 hover:text-gray-400 hover:bg-white/5'}`} title="Agentes"><Users size={18} /></button>
         
         <button onClick={() => setView(ViewMode.GRIMORIO)} className={`p-2 rounded-md transition-colors ${view === ViewMode.GRIMORIO ? 'text-orange-400 bg-orange-900/30' : 'text-gray-600 hover:text-gray-400 hover:bg-white/5'}`} title="Grimorio"><Book size={18} /></button>
-        <button onClick={() => setView(ViewMode.CONSOLE)} className={`p-2 rounded-md transition-colors ${view === ViewMode.CONSOLE ? 'text-orange-400 bg-orange-900/30' : 'text-gray-600 hover:text-gray-400 hover:bg-white/5'}`} title="Consola"><Radio size={18} /></button>
         <button onClick={() => setView(ViewMode.PROTOCOLS)} className={`p-2 rounded-md transition-colors ${view === ViewMode.PROTOCOLS ? 'text-orange-400 bg-orange-900/30' : 'text-gray-600 hover:text-gray-400 hover:bg-white/5'}`} title="Protocolos"><Shield size={18} /></button>
         <button onClick={() => setView(ViewMode.MEMORY)} className={`p-2 rounded-md transition-colors ${view === ViewMode.MEMORY ? 'text-orange-400 bg-orange-900/30' : 'text-gray-600 hover:text-gray-400 hover:bg-white/5'}`} title="Memoria"><Database size={18} /></button>
         <button onClick={() => setView(ViewMode.LIVE_CHAT)} className={`p-2 rounded-md transition-colors ${view === ViewMode.LIVE_CHAT ? 'text-orange-400 bg-orange-900/30' : 'text-gray-600 hover:text-gray-400 hover:bg-white/5'}`} title="Comunicaciones Globales"><Globe size={18} /></button>
       </nav>
-    </div>
+
+      <AnimatePresence>
+        {showTutorial && <Tutorial onClose={handleCloseTutorial} />}
+      </AnimatePresence>
+    </motion.div>
   );
 }

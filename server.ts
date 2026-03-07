@@ -5,13 +5,38 @@ import { Server as SocketIOServer } from "socket.io";
 import bcrypt from "bcryptjs";
 import cookieSession from "cookie-session";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// In-memory user store (for demo purposes)
-const users: any[] = [];
+const USERS_FILE = path.join(__dirname, "users.json");
+const STATE_FILE = path.join(__dirname, "bioma_state.json");
+
+// Persistent storage helpers
+const loadData = (file: string, defaultValue: any) => {
+  try {
+    if (fs.existsSync(file)) {
+      return JSON.parse(fs.readFileSync(file, "utf-8"));
+    }
+  } catch (e) {
+    console.error(`Error loading ${file}:`, e);
+  }
+  return defaultValue;
+};
+
+const saveData = (file: string, data: any) => {
+  try {
+    fs.writeFileSync(file, JSON.stringify(data, null, 2));
+  } catch (e) {
+    console.error(`Error saving ${file}:`, e);
+  }
+};
+
+// Load initial data
+let users = loadData(USERS_FILE, []);
+let biomaState = loadData(STATE_FILE, {});
 
 async function startServer() {
   const app = express();
@@ -68,6 +93,7 @@ async function startServer() {
     users.push(newUser);
 
     req.session!.userId = newUser.id;
+    saveData(USERS_FILE, users);
     res.json({ user: { id: newUser.id, email: newUser.email } });
   });
 
@@ -85,6 +111,20 @@ async function startServer() {
 
     req.session!.userId = user.id;
     res.json({ user: { id: user.id, email: user.email } });
+  });
+
+  // Bioma State API
+  app.get("/api/bioma/state", (req, res) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+    const userState = biomaState[req.session.userId] || {};
+    res.json(userState);
+  });
+
+  app.post("/api/bioma/state", (req, res) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+    biomaState[req.session.userId] = req.body;
+    saveData(STATE_FILE, biomaState);
+    res.json({ success: true });
   });
 
   app.post("/api/auth/logout", (req, res) => {

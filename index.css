@@ -10,6 +10,12 @@
   --color-oxidiana-border: var(--border-color);
   --color-oxidiana-red: var(--accent-color);
   --color-oxidiana-dim: var(--dim-color);
+
+  @keyframes progress-indefinite {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(100%); }
+  }
+  --animate-progress-indefinite: progress-indefinite 2s linear infinite;
 }
 
 :root {
@@ -41,6 +47,24 @@ body {
 .terminal-cursor {
   background-color: var(--cursor-color);
   box-shadow: 0 0 15px var(--cursor-color);
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--accent-color);
+  border-radius: 2px;
+  opacity: 0.5;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #ffffff;
 }
 
 /* Override some tailwind classes to use variables */

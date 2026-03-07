@@ -114,7 +114,7 @@ export const LiveChat: React.FC<LiveChatProps> = ({ user }) => {
       )}
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-red-950/10 via-black to-black">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-red-950/10 via-black to-black scroll-smooth custom-scrollbar">
         {messages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-red-900/50 space-y-4">
             <Activity size={48} className="animate-pulse" />
@@ -132,12 +132,19 @@ export const LiveChat: React.FC<LiveChatProps> = ({ user }) => {
                   </span>
                 </div>
                 <div 
-                  className={`max-w-[80%] p-3 rounded-md text-sm border ${
+                  className={`max-w-[80%] p-3 rounded-md text-sm border border-transparent ${
                     isMe 
-                      ? 'bg-red-950/40 border-red-800/50 text-red-100 rounded-tr-none' 
-                      : 'bg-black border-red-900/50 text-red-300 rounded-tl-none'
+                      ? 'text-red-100 rounded-tr-none shadow-[0_0_15px_rgba(255,0,60,0.1)]' 
+                      : 'text-red-300 rounded-tl-none shadow-[0_0_15px_rgba(69,10,10,0.2)]'
                   }`}
-                  style={{ wordBreak: 'break-word' }}
+                  style={{ 
+                    wordBreak: 'break-word',
+                    backgroundImage: isMe 
+                      ? 'linear-gradient(#1a0505, #1a0505), linear-gradient(to bottom right, #ff003c, #ff8000)'
+                      : 'linear-gradient(#050505, #050505), linear-gradient(to bottom right, #450a0a, #991b1b)',
+                    backgroundOrigin: 'border-box',
+                    backgroundClip: 'padding-box, border-box'
+                  }}
                 >
                   {msg.text}
                 </div>

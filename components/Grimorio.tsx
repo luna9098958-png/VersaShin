@@ -51,14 +51,14 @@ export const Grimorio: React.FC<GrimorioProps> = ({ logs, onClearLogs }) => {
             itemContent={(index, log) => {
               const { icon, color } = getLogInfo(log.type);
               return (
-                <div className="flex items-start gap-4 py-2 text-[12px] border-b border-white/5 last:border-b-0 font-mono transition-colors hover:bg-white/5 px-2">
-                  <div className={`w-6 shrink-0 pt-0.5 ${color}`}>{icon}</div>
+                <div className="flex items-start gap-4 py-3 text-[12px] border-b border-white/5 last:border-b-0 font-mono transition-all hover:bg-white/5 px-3 group">
+                  <div className={`w-6 shrink-0 pt-1 ${color} group-hover:scale-110 transition-transform`}>{icon}</div>
                   <div className="flex-1">
-                    <div className="flex justify-between items-center">
-                      <span className={`font-bold text-xs ${color}`}>{log.type}</span>
-                      <span className="text-gray-600 text-[10px]">{log.timestamp.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second: '2-digit'})}</span>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className={`font-black text-[10px] uppercase tracking-widest ${color} opacity-80 group-hover:opacity-100`}>{log.type}</span>
+                      <span className="text-gray-600 text-[9px] font-mono">{log.timestamp.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second: '2-digit'})}</span>
                     </div>
-                    <p className="text-gray-300 whitespace-pre-wrap mt-1 text-[11px] leading-relaxed">{log.content}</p>
+                    <p className="text-gray-400 group-hover:text-gray-200 whitespace-pre-wrap text-[11px] leading-relaxed transition-colors">{log.content}</p>
                   </div>
                 </div>
               );

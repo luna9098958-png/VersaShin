@@ -1,6 +1,6 @@
 {
-  "name": "Remix: BIOMA OXIDIANA",
-  "description": "A sovereign AI interface for the Oxidiana Biome, featuring system-level chat interaction and high-fidelity reality rendering.",
+  "name": "Luna de Sangre: Cyber Moon",
+  "description": "An immersive atmospheric experience featuring a neon-cyber blood moon with rhythmic pulses and cosmic drift.",
   "requestFramePermissions": [
     "geolocation"
   ]

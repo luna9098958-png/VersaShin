@@ -102,19 +102,18 @@ export interface Memory {
 }
 
 export interface Protocol {
-
   id: number;
   name: string;
   status: string;
   icon: string;
   description: string;
+  active?: boolean;
 }
 
 export enum ViewMode {
   CHAT = 'CHAT',
 
   AGENTS = 'AGENTS',
-  CONSOLE = 'CONSOLE',
   GRIMORIO = 'GRIMORIO',
 
   PROTOCOLS = 'PROTOCOLS',
