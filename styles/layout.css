@@ -1,0 +1,7 @@
+/* Style sheet inside the tar container */
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  background: #fafafa;
+  color: #171717;
+}

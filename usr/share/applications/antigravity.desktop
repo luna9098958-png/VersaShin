@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Antigravity IDE
+Comment=Modern sandbox software development workspace
+Exec=/opt/antigravity/antigravity
+Icon=antigravity
+Terminal=true
+Categories=Development;IDE;Utility;

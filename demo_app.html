@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Local Web Sandbox App</title>
+  <link rel="stylesheet" href="styles/layout.css">
+  <style>
+    body {
+      background: #0d0d12;
+      color: #fafbfc;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 80vh;
+      margin: 0;
+      font-family: system-ui, -apple-system, sans-serif;
+      text-align: center;
+    }
+    .card {
+      background: #14141d;
+      border: 1px solid #232334;
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 400px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+    h1 {
+      color: #8257e5;
+      font-size: 20px;
+      margin-top: 0;
+    }
+    p {
+      color: #8a8a9d;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    button {
+      background: linear-gradient(135deg, #8257e5, #00b37e);
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      margin-top: 10px;
+    }
+    button:hover {
+      transform: scale(1.03);
+      filter: brightness(1.1);
+    }
+    button:active {
+      transform: scale(0.98);
+    }
+    .status {
+      margin-top: 15px;
+      font-size: 11px;
+      color: #00b37e;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Web Sandbox Active Node</h1>
+    <p>This application is executed live inside your browser directly from the virtual in-memory TAR file system!</p>
+    
+    <div style="font-size: 32px; margin: 15px 0;">⚡</div>
+
+    <button onclick="triggerEngineAction()">Trigger Console Log</button>
+    <div class="status" id="status-box">Status: Ready to interact</div>
+  </div>
+
+  <script src="source/app.js"></script>
+  <script>
+    function triggerEngineAction() {
+      console.log("Button clicked! Triggering reactor pulse...");
+      const statusBox = document.getElementById('status-box');
+      statusBox.textContent = "Status: Reactor pulsed at " + new Date().toLocaleTimeString();
+      statusBox.style.color = "#8257e5";
+      
+      if (typeof greet === 'function') {
+        greet('Interactive User');
+      }
+    }
+  </script>
+</body>
+</html>

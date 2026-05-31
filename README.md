@@ -1,20 +1,11 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Welcome to the Tar Archive Explorer
 
-# Run and deploy your AI Studio app
+You have parsed a standard `.tar` (Tape Archive) file, loaded completely inside your browser!
 
-This contains everything you need to run your app locally.
+### What is `.tar`?
+Unlike `.zip` or `.gz` files which compress, standard `.tar` is a container that bundles multiple files together maintaining Unix block architectures and hierarchies. Compression can be layered on top (like `.tar.gz`).
 
-View your app in AI Studio: https://ai.studio/apps/2d958e45-d0f1-4f2b-8f35-83b660c153fc
-
-## Run Locally
-
-**Prerequisites:**  Node.js
-
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+### Quick Tips:
+1. Click any file or folder to inspect contents dynamically.
+2. Add new files or text templates onto the file list right here.
+3. Download the final updated archive with one click!

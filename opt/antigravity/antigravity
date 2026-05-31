@@ -1,0 +1,4 @@
+#!/bin/bash
+# Antigravity IDE Startup Script
+echo "Launching Antigravity IDE..."
+echo "Running sandboxed inside /opt/antigravity"
